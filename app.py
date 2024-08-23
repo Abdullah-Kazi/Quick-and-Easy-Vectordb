@@ -6,6 +6,7 @@ import torch
 from sklearn.metrics.pairwise import cosine_similarity
 import os
 from io import BytesIO
+import PyPDF2
 
 # Initialize DistilBERT model and tokenizer
 tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
@@ -25,6 +26,13 @@ def chunk_text(text, chunk_size=1000, overlap=200):
         chunks.append(chunk)
     return chunks
 
+def read_pdf(file):
+    pdf_reader = PyPDF2.PdfReader(file)
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text() + "\n"
+    return text
+
 def main():
     st.title("Vector DB Search App")
 
@@ -34,9 +42,10 @@ def main():
         # Read file content
         if uploaded_file.type == "text/plain":
             text = uploaded_file.read().decode()
+        elif uploaded_file.type == "application/pdf":
+            text = read_pdf(uploaded_file)
         else:
-            # For PDF, you'll need to add PDF parsing logic here
-            st.error("PDF parsing not implemented in this example")
+            st.error("Unsupported file type")
             return
 
         # Chunk the text
