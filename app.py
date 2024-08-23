@@ -29,8 +29,11 @@ def read_file(file):
     elif file.name.endswith('.pdf'):
         pdf_reader = PyPDF2.PdfReader(file)
         return ' '.join([page.extract_text() for page in pdf_reader.pages])
+    elif file.name.endswith('.tsv'):
+        df = pd.read_csv(file, sep='\t')
+        return ' '.join(df.astype(str).values.flatten())
     else:
-        st.error(f"Unsupported file format: {file.name}. Please upload a .txt, .json, or .pdf file.")
+        st.error(f"Unsupported file format: {file.name}. Please upload a .txt, .json, .pdf, or .tsv file.")
         return None
 
 # Function to chunk text
