@@ -1,7 +1,7 @@
-streamlit==1.22.0
-pandas==1.5.3
+streamlit==1.32.2
+pandas==2.2.2
 numpy==1.23.5
-torch==1.13.1
-transformers==4.28.1
-scikit-learn==1.2.2
+torch==2.3.1
+transformers==4.41.0
+scikit-learn==1.4.2
 PyPDF2==3.0.1
