@@ -60,11 +60,19 @@ def search_embeddings(query, embeddings, chunks):
     top_indices = similarities.argsort()[-5:][::-1]
     return [(chunks[i], similarities[i]) for i in top_indices]
 
-# Function to create a download link for the CSV file
-def get_csv_download_link(df):
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
-    href = f'<a href="data:file/csv;base64,{b64}" download="document_chunks.csv">Download document_chunks.csv</a>'
+# Function to create a download link for the CSV/TSV file
+def get_file_download_link(df, file_format):
+    if file_format == 'csv':
+        data = df.to_csv(index=False)
+        filename = "document_chunks.csv"
+        mime = "text/csv"
+    else:  # TSV
+        data = df.to_csv(index=False, sep='\t')
+        filename = "document_chunks.tsv"
+        mime = "text/tab-separated-values"
+    
+    b64 = base64.b64encode(data.encode()).decode()
+    href = f'<a href="data:file/{mime};base64,{b64}" download="{filename}">Download {filename}</a>'
     return href
 
 # Streamlit app
@@ -72,7 +80,7 @@ def main():
     st.title("Multi-format Document Search App")
 
     # File uploader for multiple files
-    uploaded_files = st.file_uploader("Choose files", type=["txt", "json", "pdf"], accept_multiple_files=True)
+    uploaded_files = st.file_uploader("Choose files", type=["txt", "json", "pdf", "tsv"], accept_multiple_files=True)
 
     if uploaded_files:
         all_chunks = []
@@ -100,7 +108,10 @@ def main():
             })
 
             st.success("Files processed successfully!")
-            st.markdown(get_csv_download_link(df), unsafe_allow_html=True)
+            
+            # Provide options to download as CSV or TSV
+            st.markdown(get_file_download_link(df, 'csv'), unsafe_allow_html=True)
+            st.markdown(get_file_download_link(df, 'tsv'), unsafe_allow_html=True)
 
             # Store the dataframe in session state for searching
             st.session_state['search_df'] = df
