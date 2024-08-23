@@ -9,8 +9,13 @@ from io import BytesIO
 import PyPDF2
 
 # Initialize DistilBERT model and tokenizer
-tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
-model = DistilBertModel.from_pretrained('distilbert-base-uncased')
+@st.cache_resource
+def load_model():
+    tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+    model = DistilBertModel.from_pretrained('distilbert-base-uncased')
+    return tokenizer, model
+
+tokenizer, model = load_model()
 
 def get_embedding(text):
     inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=512)
@@ -59,8 +64,19 @@ def main():
             'document_download_link': [''] * len(chunks),  # You'll need to implement file storage and link generation
         })
 
-        # Generate embeddings
-        df['vector_embedding'] = df['chunk_text'].apply(get_embedding)
+        # Generate embeddings with progress bar
+        embeddings = []
+        with st.status("Processing document...", expanded=True) as status:
+            st.write("Generating embeddings...")
+            progress_bar = st.progress(0)
+            for i, chunk in enumerate(df['chunk_text']):
+                embeddings.append(get_embedding(chunk))
+                progress = (i + 1) / len(df)
+                progress_bar.progress(progress)
+                status.update(label=f"Processing document... ({i+1}/{len(df)} chunks)")
+            
+            df['vector_embedding'] = embeddings
+            status.update(label="Document processing complete!", state="complete")
 
         # Save to CSV
         csv = df.to_csv(index=False).encode()
