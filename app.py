@@ -4,16 +4,20 @@ import numpy as np
 import torch
 from transformers import DistilBertTokenizer, DistilBertModel
 from sklearn.metrics.pairwise import cosine_similarity
-import os
 import uuid
 import PyPDF2
 import io
-import base64
 import json
+import base64
 
 # Initialize DistilBERT model and tokenizer
-tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
-model = DistilBertModel.from_pretrained('distilbert-base-uncased')
+@st.cache_resource
+def load_model():
+    tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+    model = DistilBertModel.from_pretrained('distilbert-base-uncased')
+    return tokenizer, model
+
+tokenizer, model = load_model()
 
 # Function to read different file formats
 def read_file(file):
@@ -21,13 +25,12 @@ def read_file(file):
         return file.read().decode('utf-8')
     elif file.name.endswith('.json'):
         json_data = json.load(file)
-        # Assuming the JSON contains a 'text' field. Adjust as necessary.
         return json_data.get('text', str(json_data))
     elif file.name.endswith('.pdf'):
         pdf_reader = PyPDF2.PdfReader(file)
         return ' '.join([page.extract_text() for page in pdf_reader.pages])
     else:
-        st.error("Unsupported file format. Please upload a .txt, .json, or .pdf file.")
+        st.error(f"Unsupported file format: {file.name}. Please upload a .txt, .json, or .pdf file.")
         return None
 
 # Function to chunk text
@@ -40,6 +43,7 @@ def chunk_text(text, chunk_size=200, overlap=50):
     return chunks
 
 # Function to create embeddings
+@st.cache_data
 def create_embedding(text):
     inputs = tokenizer(text, return_tensors="pt", truncation=True, padding=True, max_length=512)
     with torch.no_grad():
@@ -57,60 +61,65 @@ def search_embeddings(query, embeddings, chunks):
 def get_csv_download_link(df):
     csv = df.to_csv(index=False)
     b64 = base64.b64encode(csv.encode()).decode()
-    href = f'<a href="data:file/csv;base64,{b64}" download="document_chunks.csv">Download CSV File</a>'
+    href = f'<a href="data:file/csv;base64,{b64}" download="document_chunks.csv">Download document_chunks.csv</a>'
     return href
 
 # Streamlit app
 def main():
     st.title("Multi-format Document Search App")
 
-    # File uploader
-    uploaded_file = st.file_uploader("Choose a file", type=["txt", "json", "pdf"])
+    # File uploader for multiple files
+    uploaded_files = st.file_uploader("Choose files", type=["txt", "json", "pdf"], accept_multiple_files=True)
 
-    if uploaded_file is not None:
-        # Read file content
-        content = read_file(uploaded_file)
+    if uploaded_files:
+        all_chunks = []
+        all_embeddings = []
+        
+        progress_bar = st.progress(0)
+        for i, uploaded_file in enumerate(uploaded_files):
+            content = read_file(uploaded_file)
+            if content:
+                chunks = chunk_text(content)
+                embeddings = [create_embedding(chunk) for chunk in chunks]
+                
+                all_chunks.extend(chunks)
+                all_embeddings.extend(embeddings)
+            
+            progress_bar.progress((i + 1) / len(uploaded_files))
 
-        if content:
-            # Chunk the text
-            chunks = chunk_text(content)
-
-            # Create embeddings
-            embeddings = [create_embedding(chunk) for chunk in chunks]
-
-            # Save to CSV
+        if all_chunks:
             df = pd.DataFrame({
-                'chunk_id': [str(uuid.uuid4()) for _ in range(len(chunks))],
-                'doc_id': uploaded_file.name,
-                'document_file': uploaded_file.name,
-                'chunk_text': chunks,
-                'vector_embedding': embeddings
+                'chunk_id': [str(uuid.uuid4()) for _ in range(len(all_chunks))],
+                'doc_id': [file.name for file in uploaded_files for _ in range(len(chunk_text(read_file(file))))],
+                'document_file': [file.name for file in uploaded_files for _ in range(len(chunk_text(read_file(file))))],
+                'chunk_text': all_chunks,
+                'vector_embedding': all_embeddings
             })
-            df.to_csv('document_chunks.csv', index=False)
 
-            st.success("File processed and saved!")
-
-            # Add download button for CSV
+            st.success("Files processed successfully!")
             st.markdown(get_csv_download_link(df), unsafe_allow_html=True)
+
+            # Store the dataframe in session state for searching
+            st.session_state['search_df'] = df
+        else:
+            st.warning("No valid content found in uploaded files.")
+            return
 
     # Search functionality
     st.header("Search Documents")
     query = st.text_input("Enter your search query")
 
-    if query:
-        if os.path.exists('document_chunks.csv'):
-            df = pd.read_csv('document_chunks.csv')
-            chunks = df['chunk_text'].tolist()
-            embeddings = np.array(df['vector_embedding'].tolist())
+    if query and 'search_df' in st.session_state:
+        df = st.session_state['search_df']
+        chunks = df['chunk_text'].tolist()
+        embeddings = np.array(df['vector_embedding'].tolist())
 
-            results = search_embeddings(query, embeddings, chunks)
+        results = search_embeddings(query, embeddings, chunks)
 
-            for chunk, score in results:
-                st.write(f"Similarity: {score:.4f}")
-                st.write(chunk)
-                st.write("---")
-        else:
-            st.warning("No documents have been processed yet.")
+        for chunk, score in results:
+            st.write(f"Similarity: {score:.4f}")
+            st.write(chunk)
+            st.write("---")
 
 if __name__ == "__main__":
     main()
