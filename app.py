@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 from transformers import DistilBertTokenizer, DistilBertModel
 import torch
+import os
 
 # Page configuration
 st.set_page_config(page_title="Document Search", layout="wide")
@@ -42,26 +43,33 @@ page = st.sidebar.radio("Go to", ["Search", "Add New Data", "Upload File", "Inst
 # Load or initialize the dataframe
 if 'df' not in st.session_state:
     predefined_file = "vector_final_db.csv"
-    st.session_state.df = load_data(predefined_file)
+    if os.path.exists(predefined_file):
+        st.session_state.df = load_data(predefined_file)
+    else:
+        st.warning(f"Predefined file '{predefined_file}' not found. Please upload a CSV file.")
+        st.session_state.df = pd.DataFrame(columns=['chunk_id', 'document_id', 'chunk_text', 'vector_embedding'])
 
 # Main area
 if page == "Search":
     st.title("Document Search")
 
-    query = st.text_input("Enter your search query:")
+    if st.session_state.df.empty:
+        st.warning("No data available. Please upload a CSV file or add new data.")
+    else:
+        query = st.text_input("Enter your search query:")
 
-    if st.button("Search"):
-        if query:
-            results = search_similar(query, st.session_state.df)
-            st.subheader("Search Results")
-            for _, row in results.iterrows():
-                with st.expander(f"Result - Similarity: {row['similarity']:.4f}"):
-                    st.markdown(f"**Document ID:** {row['document_id']}")
-                    st.markdown(f"**Chunk ID:** {row['chunk_id']}")
-                    st.markdown("**Text:**")
-                    st.write(row['chunk_text'])
-        else:
-            st.warning("Please enter a search query.")
+        if st.button("Search"):
+            if query:
+                results = search_similar(query, st.session_state.df)
+                st.subheader("Search Results")
+                for _, row in results.iterrows():
+                    with st.expander(f"Result - Similarity: {row['similarity']:.4f}"):
+                        st.markdown(f"**Document ID:** {row['document_id']}")
+                        st.markdown(f"**Chunk ID:** {row['chunk_id']}")
+                        st.markdown("**Text:**")
+                        st.write(row['chunk_text'])
+            else:
+                st.warning("Please enter a search query.")
 
 elif page == "Add New Data":
     st.title("Add New Data")
@@ -86,8 +94,11 @@ elif page == "Upload File":
     
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
     if uploaded_file is not None:
-        st.session_state.df = load_data(uploaded_file)
-        st.success("File uploaded successfully!")
+        try:
+            st.session_state.df = load_data(uploaded_file)
+            st.success("File uploaded successfully!")
+        except Exception as e:
+            st.error(f"Error loading file: {str(e)}")
 
 elif page == "Instructions":
     st.title("CSV File Format Instructions")
@@ -111,5 +122,8 @@ elif page == "Instructions":
 # Display some statistics about the loaded data
 st.sidebar.markdown("---")
 st.sidebar.subheader("Dataset Statistics")
-st.sidebar.write(f"Total documents: {st.session_state.df['document_id'].nunique()}")
-st.sidebar.write(f"Total chunks: {len(st.session_state.df)}")
+if not st.session_state.df.empty:
+    st.sidebar.write(f"Total documents: {st.session_state.df['document_id'].nunique()}")
+    st.sidebar.write(f"Total chunks: {len(st.session_state.df)}")
+else:
+    st.sidebar.write("No data loaded")
