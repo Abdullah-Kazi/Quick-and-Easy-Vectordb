@@ -1,42 +1,63 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-from transformers import DistilBertTokenizer, DistilBertModel
-import torch
-import os
+# Import necessary libraries
+import streamlit as st  # For creating the web app interface
+import pandas as pd  # For data manipulation and analysis
+import numpy as np  # For numerical operations
+from transformers import DistilBertTokenizer, DistilBertModel  # For text embedding
+import torch  # For machine learning operations
+import os  # For file and directory operations
 
-# Page configuration
+# Configure the Streamlit page
 st.set_page_config(page_title="Document Search", layout="wide")
 
-# Initialize DistilBERT model and tokenizer
-@st.cache_resource
+# Initialize the DistilBERT model and tokenizer
+@st.cache_resource  # This decorator helps cache the model to improve performance
 def load_model():
+    # Load the pre-trained tokenizer and model
     tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
     model = DistilBertModel.from_pretrained('distilbert-base-uncased')
+    # Set up the device (GPU if available, otherwise CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
+    model.to(device)  # Move the model to the appropriate device
     return tokenizer, model, device
 
+# Load the model and tokenizer
 tokenizer, model, device = load_model()
 
+# Function to generate text embeddings
 def get_embedding(text):
+    # Tokenize the input text and prepare it for the model
     inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=512)
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-    with torch.no_grad():
+    inputs = {k: v.to(device) for k, v in inputs.items()}  # Move inputs to the appropriate device
+    
+    # Generate the embedding
+    with torch.no_grad():  # Disable gradient calculation for inference
         outputs = model(**inputs)
+    
+    # Return the mean of the last hidden state as the embedding
     return outputs.last_hidden_state.mean(dim=1).squeeze().cpu().numpy()
 
+# Function to search for similar text chunks
 def search_similar(query, df, top_k=5):
+    # Generate embedding for the query
     query_embedding = get_embedding(query)
+    
+    # Calculate similarity between query and all chunks
     df['similarity'] = df['vector_embedding'].apply(lambda x: np.dot(x, query_embedding))
+    
+    # Return top k most similar results
     return df.sort_values('similarity', ascending=False).head(top_k)
 
+# Function to load data from a CSV file
 def load_data(file):
+    # Read the CSV file
     df = pd.read_csv(file)
+    
+    # Convert the string representation of embeddings back to numpy arrays
     df['vector_embedding'] = df['vector_embedding'].apply(lambda x: np.fromstring(x, sep=','))
+    
     return df
 
-# Sidebar for navigation
+# Set up the sidebar for navigation
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to", ["Instructions", "Upload File", "Search", "Add New Data"])
 
@@ -44,22 +65,26 @@ page = st.sidebar.radio("Go to", ["Instructions", "Upload File", "Search", "Add 
 if 'df' not in st.session_state:
     predefined_file = "vector_final_db.csv"
     if os.path.exists(predefined_file):
+        # Load the predefined file if it exists
         st.session_state.df = load_data(predefined_file)
     else:
+        # Create an empty dataframe if the file doesn't exist
         st.warning(f"Predefined file '{predefined_file}' not found. Please upload a CSV file.")
         st.session_state.df = pd.DataFrame(columns=['chunk_id', 'document_id', 'chunk_text', 'vector_embedding'])
 
-# Main area
+# Main area of the app
 if page == "Search":
     st.title("Document Search")
 
     if st.session_state.df.empty:
         st.warning("No data available. Please upload a CSV file or add new data.")
     else:
+        # Create an input box for the search query
         query = st.text_input("Enter your search query:")
 
         if st.button("Search"):
             if query:
+                # Perform the search and display results
                 results = search_similar(query, st.session_state.df)
                 st.subheader("Search Results")
                 for _, row in results.iterrows():
@@ -73,23 +98,30 @@ if page == "Search":
 elif page == "Add New Data":
     st.title("Add New Data")
     
+    # Create input fields for new data
     new_chunk_id = st.number_input("Chunk ID", min_value=0, step=1)
     new_chunk_text = st.text_area("Chunk Text")
     
     if st.button("Submit New Data"):
+        # Generate embedding for the new text
         new_embedding = get_embedding(new_chunk_text)
+        
+        # Create a new row of data
         new_row = pd.DataFrame({
             'chunk_id': [new_chunk_id],
             'document_id': ['user_added'],
             'chunk_text': [new_chunk_text],
             'vector_embedding': [new_embedding]
         })
+        
+        # Add the new row to the existing dataframe
         st.session_state.df = pd.concat([st.session_state.df, new_row], ignore_index=True)
         st.success("New data added successfully!")
 
 elif page == "Upload File":
     st.title("Upload CSV File")
     
+    # Display instructions for CSV file format
     st.write("""
     ### CSV File Format Instructions
     
@@ -109,9 +141,11 @@ elif page == "Upload File":
     ```
     """)
     
+    # Create a file uploader
     uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
     if uploaded_file is not None:
         try:
+            # Try to load the uploaded file
             st.session_state.df = load_data(uploaded_file)
             st.success("File uploaded successfully!")
         except Exception as e:
@@ -120,6 +154,7 @@ elif page == "Upload File":
 elif page == "Instructions":
     st.title("How to Use the Document Search App")
     
+    # Display instructions for using the app
     st.write("""
     Welcome to the Document Search Application! Here's how to use each feature:
 
@@ -148,7 +183,7 @@ elif page == "Instructions":
     Remember, you need to either upload a file or add data manually before you can perform searches.
     """)
 
-# Display some statistics about the loaded data
+# Display statistics about the loaded data in the sidebar
 st.sidebar.markdown("---")
 st.sidebar.subheader("Dataset Statistics")
 if not st.session_state.df.empty:
