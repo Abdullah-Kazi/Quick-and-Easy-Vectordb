@@ -64,7 +64,6 @@ if page == "Search":
                 st.subheader("Search Results")
                 for _, row in results.iterrows():
                     with st.expander(f"Result - Similarity: {row['similarity']:.4f}"):
-                        st.markdown(f"**Document ID:** {row['document_id']}")
                         st.markdown(f"**Chunk ID:** {row['chunk_id']}")
                         st.markdown("**Text:**")
                         st.write(row['chunk_text'])
@@ -75,14 +74,13 @@ elif page == "Add New Data":
     st.title("Add New Data")
     
     new_chunk_id = st.number_input("Chunk ID", min_value=0, step=1)
-    new_document_id = st.text_input("Document ID")
     new_chunk_text = st.text_area("Chunk Text")
     
     if st.button("Submit New Data"):
         new_embedding = get_embedding(new_chunk_text)
         new_row = pd.DataFrame({
             'chunk_id': [new_chunk_id],
-            'document_id': [new_document_id],
+            'document_id': ['user_added'],  # We keep this for internal use
             'chunk_text': [new_chunk_text],
             'vector_embedding': [new_embedding]
         })
@@ -107,7 +105,7 @@ elif page == "Instructions":
     - The file should be a CSV (Comma-Separated Values) file.
     - It should contain the following columns:
       1. chunk_id (integer): A unique identifier for each text chunk
-      2. document_id (string): An identifier for the source document
+      2. document_id (string): An identifier for the source document (not displayed, but used internally)
       3. chunk_text (string): The actual text content of the chunk
       4. vector_embedding (string): The embedding vector as a comma-separated string of numbers
 
@@ -123,7 +121,6 @@ elif page == "Instructions":
 st.sidebar.markdown("---")
 st.sidebar.subheader("Dataset Statistics")
 if not st.session_state.df.empty:
-    st.sidebar.write(f"Total documents: {st.session_state.df['document_id'].nunique()}")
     st.sidebar.write(f"Total chunks: {len(st.session_state.df)}")
 else:
     st.sidebar.write("No data loaded")
