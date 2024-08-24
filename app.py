@@ -3,97 +3,71 @@ import pandas as pd
 import numpy as np
 from transformers import DistilBertTokenizer, DistilBertModel
 import torch
-from sklearn.metrics.pairwise import cosine_similarity
-import os
-from io import BytesIO
-import PyPDF2
 
 # Initialize DistilBERT model and tokenizer
 @st.cache_resource
 def load_model():
     tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
     model = DistilBertModel.from_pretrained('distilbert-base-uncased')
-    return tokenizer, model
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    return tokenizer, model, device
 
-tokenizer, model = load_model()
+tokenizer, model, device = load_model()
 
 def get_embedding(text):
+    """Generate embedding for a single text using DistilBERT."""
     inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=512)
+    inputs = {k: v.to(device) for k, v in inputs.items()}
     with torch.no_grad():
         outputs = model(**inputs)
-    return outputs.last_hidden_state.mean(dim=1).squeeze().numpy()
+    return outputs.last_hidden_state.mean(dim=1).squeeze().cpu().numpy()
 
-def chunk_text(text, chunk_size=1000, overlap=200):
-    words = text.split()
-    chunks = []
-    for i in range(0, len(words), chunk_size - overlap):
-        chunk = ' '.join(words[i:i + chunk_size])
-        chunks.append(chunk)
-    return chunks
+def search_similar(query, df, top_k=5):
+    """Search for similar chunks."""
+    query_embedding = get_embedding(query)
+    df['similarity'] = df['vector_embedding'].apply(lambda x: np.dot(x, query_embedding))
+    return df.sort_values('similarity', ascending=False).head(top_k)
 
-def read_pdf(file):
-    pdf_reader = PyPDF2.PdfReader(file)
-    text = ""
-    for page in pdf_reader.pages:
-        text += page.extract_text() + "\n"
-    return text
+def load_data(file):
+    df = pd.read_csv(file)
+    df['vector_embedding'] = df['vector_embedding'].apply(lambda x: np.fromstring(x, sep=','))
+    return df
 
-def main():
-    st.title("Vector DB Search App")
+st.title("Document Search Application")
 
-    # File upload
-    uploaded_file = st.file_uploader("Choose a file", type=['txt', 'pdf'])
+# File upload or use predefined file
+file_option = st.radio("Choose a file option:", ("Upload a CSV file", "Use predefined CSV file"))
+
+if file_option == "Upload a CSV file":
+    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
     if uploaded_file is not None:
-        # Read file content
-        if uploaded_file.type == "text/plain":
-            text = uploaded_file.read().decode()
-        elif uploaded_file.type == "application/pdf":
-            text = read_pdf(uploaded_file)
-        else:
-            st.error("Unsupported file type")
-            return
+        df = load_data(uploaded_file)
+        st.success("File uploaded successfully!")
+else:
+    predefined_file = "vector_final_db.csv"  # Replace with your predefined file path
+    df = load_data(predefined_file)
+    st.success(f"Using predefined file: {predefined_file}")
 
-        # Chunk the text
-        chunks = chunk_text(text)
+# Search functionality
+st.header("Search")
+query = st.text_input("Enter your search query:")
 
-        # Create DataFrame
-        df = pd.DataFrame({
-            'chunk_id': range(len(chunks)),
-            'chunk_text': chunks,
-            'document_id': [uploaded_file.name] * len(chunks),
-            'document_download_link': [''] * len(chunks),  # You'll need to implement file storage and link generation
-        })
+if st.button("Search"):
+    if query:
+        results = search_similar(query, df)
+        st.subheader("Search Results")
+        for _, row in results.iterrows():
+            st.write(f"Document: {row['document_file']}")
+            st.write(f"Chunk ID: {row['chunk_id']}")
+            st.write(f"Similarity: {row['similarity']:.4f}")
+            st.write(f"Text: {row['chunk_text']}")
+            st.write("---")
+    else:
+        st.warning("Please enter a search query.")
 
-        # Generate embeddings with progress bar
-        embeddings = []
-        with st.status("Processing document...", expanded=True) as status:
-            st.write("Generating embeddings...")
-            progress_bar = st.progress(0)
-            for i, chunk in enumerate(df['chunk_text']):
-                embeddings.append(get_embedding(chunk))
-                progress = (i + 1) / len(df)
-                progress_bar.progress(progress)
-                status.update(label=f"Processing document... ({i+1}/{len(df)} chunks)")
-            
-            df['vector_embedding'] = embeddings
-            status.update(label="Document processing complete!", state="complete")
-
-        # Save to CSV
-        csv = df.to_csv(index=False).encode()
-        st.download_button(
-            label="Download CSV",
-            data=csv,
-            file_name="vector_db.csv",
-            mime="text/csv",
-        )
-
-        # Search functionality
-        search_query = st.text_input("Enter your search query")
-        if search_query:
-            query_embedding = get_embedding(search_query)
-            df['similarity'] = df['vector_embedding'].apply(lambda x: cosine_similarity([x], [query_embedding])[0][0])
-            results = df.sort_values('similarity', ascending=False).head(5)
-            st.write(results[['chunk_text', 'similarity']])
-
-if __name__ == "__main__":
-    main()
+# Display some statistics about the loaded data
+if 'df' in locals():
+    st.sidebar.header("Dataset Statistics")
+    st.sidebar.write(f"Total documents: {df['document_id'].nunique()}")
+    st.sidebar.write(f"Total chunks: {len(df)}")
