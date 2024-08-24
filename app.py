@@ -35,30 +35,42 @@ def load_data(file):
     df['vector_embedding'] = df['vector_embedding'].apply(lambda x: np.fromstring(x, sep=','))
     return df
 
-# Sidebar
-st.sidebar.title("Document Search App")
+# Sidebar for navigation
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Go to", ["Search", "Add New Data", "Upload File", "Instructions"])
 
-# File upload or use predefined file
-file_option = st.sidebar.radio("Choose a file option:", ("Upload a CSV file", "Use predefined CSV file"))
-
-if file_option == "Upload a CSV file":
-    uploaded_file = st.sidebar.file_uploader("Choose a CSV file", type="csv")
-    if uploaded_file is not None:
-        df = load_data(uploaded_file)
-        st.sidebar.success("File uploaded successfully!")
-else:
+# Load or initialize the dataframe
+if 'df' not in st.session_state:
     predefined_file = "vector_final_db.csv"
-    df = load_data(predefined_file)
-    st.sidebar.success(f"Using predefined file: {predefined_file}")
+    st.session_state.df = load_data(predefined_file)
 
-# Add new data button
-if st.sidebar.button("Add New Data"):
-    st.sidebar.subheader("Add New Data")
-    new_chunk_id = st.sidebar.number_input("Chunk ID", min_value=0, step=1)
-    new_document_id = st.sidebar.text_input("Document ID")
-    new_chunk_text = st.sidebar.text_area("Chunk Text")
+# Main area
+if page == "Search":
+    st.title("Document Search")
+
+    query = st.text_input("Enter your search query:")
+
+    if st.button("Search"):
+        if query:
+            results = search_similar(query, st.session_state.df)
+            st.subheader("Search Results")
+            for _, row in results.iterrows():
+                with st.expander(f"Result - Similarity: {row['similarity']:.4f}"):
+                    st.markdown(f"**Document ID:** {row['document_id']}")
+                    st.markdown(f"**Chunk ID:** {row['chunk_id']}")
+                    st.markdown("**Text:**")
+                    st.write(row['chunk_text'])
+        else:
+            st.warning("Please enter a search query.")
+
+elif page == "Add New Data":
+    st.title("Add New Data")
     
-    if st.sidebar.button("Submit New Data"):
+    new_chunk_id = st.number_input("Chunk ID", min_value=0, step=1)
+    new_document_id = st.text_input("Document ID")
+    new_chunk_text = st.text_area("Chunk Text")
+    
+    if st.button("Submit New Data"):
         new_embedding = get_embedding(new_chunk_text)
         new_row = pd.DataFrame({
             'chunk_id': [new_chunk_id],
@@ -66,37 +78,19 @@ if st.sidebar.button("Add New Data"):
             'chunk_text': [new_chunk_text],
             'vector_embedding': [new_embedding]
         })
-        df = pd.concat([df, new_row], ignore_index=True)
-        st.sidebar.success("New data added successfully!")
+        st.session_state.df = pd.concat([st.session_state.df, new_row], ignore_index=True)
+        st.success("New data added successfully!")
 
-# Main area
-st.title("Document Search")
+elif page == "Upload File":
+    st.title("Upload CSV File")
+    
+    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+    if uploaded_file is not None:
+        st.session_state.df = load_data(uploaded_file)
+        st.success("File uploaded successfully!")
 
-# Search functionality
-query = st.text_input("Enter your search query:")
-
-if st.button("Search"):
-    if query:
-        results = search_similar(query, df)
-        st.subheader("Search Results")
-        for _, row in results.iterrows():
-            with st.expander(f"Result - Similarity: {row['similarity']:.4f}"):
-                st.markdown(f"**Document ID:** {row['document_id']}")
-                st.markdown(f"**Chunk ID:** {row['chunk_id']}")
-                st.markdown("**Text:**")
-                st.write(row['chunk_text'])
-    else:
-        st.warning("Please enter a search query.")
-
-# Display some statistics about the loaded data
-if 'df' in locals():
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("Dataset Statistics")
-    st.sidebar.write(f"Total documents: {df['document_id'].nunique()}")
-    st.sidebar.write(f"Total chunks: {len(df)}")
-
-# File format instructions
-with st.expander("CSV File Format Instructions"):
+elif page == "Instructions":
+    st.title("CSV File Format Instructions")
     st.write("""
     If you're uploading your own CSV file, please ensure it follows this format:
     - The file should be a CSV (Comma-Separated Values) file.
@@ -113,3 +107,9 @@ with st.expander("CSV File Format Instructions"):
     2,doc1,"This is another sample.",0.2,0.3,0.4,0.5,...
     ```
     """)
+
+# Display some statistics about the loaded data
+st.sidebar.markdown("---")
+st.sidebar.subheader("Dataset Statistics")
+st.sidebar.write(f"Total documents: {st.session_state.df['document_id'].nunique()}")
+st.sidebar.write(f"Total chunks: {len(st.session_state.df)}")
