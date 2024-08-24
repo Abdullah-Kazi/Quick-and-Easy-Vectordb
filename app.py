@@ -38,7 +38,7 @@ def load_data(file):
 
 # Sidebar for navigation
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["Search", "Add New Data", "Upload File", "Instructions"])
+page = st.sidebar.radio("Go to", ["Instructions", "Search", "Add New Data", "Upload File"])
 
 # Load or initialize the dataframe
 if 'df' not in st.session_state:
