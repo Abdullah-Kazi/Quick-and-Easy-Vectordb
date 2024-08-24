@@ -44,17 +44,16 @@ If you're uploading your own CSV file, please ensure it follows this format:
 - It should contain the following columns:
   1. chunk_id (integer): A unique identifier for each text chunk
   2. document_id (string): An identifier for the source document
-  3. document_file (string): The file path or name of the source document
-  4. chunk_text (string): The actual text content of the chunk
-  5. vector_embedding (string): The embedding vector as a comma-separated string of numbers
+  3. chunk_text (string): The actual text content of the chunk
+  4. vector_embedding (string): The embedding vector as a comma-separated string of numbers
 - The vector_embedding should be a string representation of the numerical values, separated by commas.
   For example: "0.1,0.2,0.3,0.4,..."
 
 Example:
 ```
-chunk_id,document_id,document_file,chunk_text,vector_embedding
-1,doc1,/path/to/doc1.pdf,"This is a sample text.",0.1,0.2,0.3,0.4,...
-2,doc1,/path/to/doc1.pdf,"This is another sample.",0.2,0.3,0.4,0.5,...
+chunk_id,document_id,chunk_text,vector_embedding
+1,doc1,"This is a sample text.",0.1,0.2,0.3,0.4,...
+2,doc1,"This is another sample.",0.2,0.3,0.4,0.5,...
 ```
 """)
 
@@ -76,7 +75,6 @@ st.header("Add New Data")
 with st.form("new_data_form"):
     new_chunk_id = st.number_input("Chunk ID", min_value=0, step=1)
     new_document_id = st.text_input("Document ID")
-    new_document_file = st.text_input("Document File")
     new_chunk_text = st.text_area("Chunk Text")
     
     submitted = st.form_submit_button("Add New Data")
@@ -85,7 +83,6 @@ with st.form("new_data_form"):
         new_row = pd.DataFrame({
             'chunk_id': [new_chunk_id],
             'document_id': [new_document_id],
-            'document_file': [new_document_file],
             'chunk_text': [new_chunk_text],
             'vector_embedding': [new_embedding]
         })
@@ -101,7 +98,7 @@ if st.button("Search"):
         results = search_similar(query, df)
         st.subheader("Search Results")
         for _, row in results.iterrows():
-            st.write(f"Document: {row['document_file']}")
+            st.write(f"Document ID: {row['document_id']}")
             st.write(f"Chunk ID: {row['chunk_id']}")
             st.write(f"Similarity: {row['similarity']:.4f}")
             st.write(f"Text: {row['chunk_text']}")
