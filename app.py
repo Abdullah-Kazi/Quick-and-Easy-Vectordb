@@ -45,7 +45,7 @@ if file_option == "Upload a CSV file":
         df = load_data(uploaded_file)
         st.success("File uploaded successfully!")
 else:
-    predefined_file = "vector_final_db.csv"  # Replace with your predefined file path
+    predefined_file = "vector_final_db.csv"
     df = load_data(predefined_file)
     st.success(f"Using predefined file: {predefined_file}")
 
